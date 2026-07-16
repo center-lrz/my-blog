@@ -12,6 +12,7 @@ const state = {
 
 const tokenKey = "forum_session_token";
 const app = document.querySelector("#app");
+let appEventsBound = false;
 
 const topicColors = {
   life: "#0f766e",
@@ -413,16 +414,8 @@ function renderSinglePostContent() {
 }
 
 function bindShellEvents() {
-  const searchForm = document.querySelector("#search-form");
-  if (searchForm) {
-    searchForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      state.query = document.querySelector("#search-input").value.trim();
-      await loadPosts();
-    });
-  }
-
-  document.querySelector("#refresh-button")?.addEventListener("click", loadPosts);
+  if (appEventsBound) return;
+  appEventsBound = true;
 
   document.querySelector("#app").addEventListener("click", async (event) => {
     const authButton = event.target.closest("[data-auth]");
@@ -434,11 +427,17 @@ function bindShellEvents() {
     const removeAttachment = event.target.closest(".remove-attachment");
     const imageButton = event.target.closest(".attachment-open");
     const profileButton = event.target.closest(".profile-button");
+    const refreshButton = event.target.closest("#refresh-button");
 
     if (homeButton) {
       state.activePost = null;
       shell();
       await loadTopics();
+      await loadPosts();
+      return;
+    }
+
+    if (refreshButton) {
       await loadPosts();
       return;
     }
@@ -501,6 +500,13 @@ function bindShellEvents() {
   });
 
   document.querySelector("#app").addEventListener("submit", async (event) => {
+    if (event.target.id === "search-form") {
+      event.preventDefault();
+      state.query = document.querySelector("#search-input")?.value.trim() || "";
+      await loadPosts();
+      return;
+    }
+
     if (event.target.id === "post-form") {
       event.preventDefault();
       await createPost(event.target);
@@ -519,7 +525,7 @@ function openAuthDialog(mode = "login") {
   dialog.className = "auth-dialog";
   dialog.innerHTML = `
     <form method="dialog" class="auth-card">
-      <button class="close-button" value="cancel" type="submit">×</button>
+      <button class="close-button" value="cancel" type="button">×</button>
       <p class="eyebrow">${isRegister ? "Create Account" : "Welcome Back"}</p>
       <h2>${isRegister ? "注册账号" : "登录账号"}</h2>
       <label>
@@ -546,6 +552,7 @@ function openAuthDialog(mode = "login") {
   });
 
   dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelector(".close-button").addEventListener("click", () => dialog.close());
 
   dialog.querySelector("[data-switch-auth]").addEventListener("click", (event) => {
     const next = event.currentTarget.dataset.switchAuth;
