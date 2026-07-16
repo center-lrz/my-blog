@@ -119,6 +119,29 @@ function shell() {
   renderDetail();
 }
 
+async function openSinglePostPage(postId) {
+  await loadPost(postId, { render: false });
+
+  app.innerHTML = `
+    <header class="topbar single-topbar">
+      <button class="brand brand-button" data-home type="button">
+        <span>李润社区</span>
+        <small>单帖查看</small>
+      </button>
+      <button class="ghost-button" data-home type="button">返回社区首页</button>
+      <div class="account-slot" id="account-slot"></div>
+    </header>
+
+    <main class="single-page">
+      <section class="single-thread" id="single-thread"></section>
+    </main>
+  `;
+
+  bindShellEvents();
+  renderAccount();
+  renderSinglePostContent();
+}
+
 function renderAccount() {
   const slot = document.querySelector("#account-slot");
 
@@ -237,6 +260,7 @@ function pendingAttachmentMarkup() {
 
 function renderPosts() {
   const posts = document.querySelector("#posts");
+  if (!posts) return;
 
   if (!state.posts.length) {
     posts.innerHTML = `
@@ -274,6 +298,7 @@ function renderPosts() {
 
 function renderDetail() {
   const detail = document.querySelector("#detail-panel");
+  if (!detail) return;
 
   if (!state.activePost) {
     detail.innerHTML = `
@@ -333,17 +358,75 @@ function renderDetail() {
   `;
 }
 
-function bindShellEvents() {
-  document.querySelector("#search-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    state.query = document.querySelector("#search-input").value.trim();
-    await loadPosts();
-  });
+function renderSinglePostContent() {
+  const target = document.querySelector("#single-thread");
+  if (!target || !state.activePost) return;
 
-  document.querySelector("#refresh-button").addEventListener("click", loadPosts);
+  const comments = state.activePost.comments || [];
+  target.innerHTML = `
+    <article class="single-thread-card">
+      <div class="thread-topic">${escapeHtml(state.activePost.topic_name)}</div>
+      <h1>${escapeHtml(state.activePost.title)}</h1>
+      ${state.activePost.body ? `<p>${escapeHtml(state.activePost.body)}</p>` : ""}
+      ${attachmentMarkup(state.activePost, "detail")}
+      <div class="thread-meta">由 ${escapeHtml(state.activePost.username)} 发布 · ${formatTime(state.activePost.created_at)}</div>
+    </article>
+
+    <section class="single-comments">
+      <div class="single-section-title">
+        <h2>留言</h2>
+        <span>${comments.length} 条</span>
+      </div>
+      <div class="comment-list">
+        ${
+          comments.length
+            ? comments
+                .map(
+                  (comment) => `
+                    <div class="comment">
+                      <div class="avatar small">${escapeHtml(comment.username.slice(0, 1).toUpperCase())}</div>
+                      <div>
+                        <strong>${escapeHtml(comment.username)}</strong>
+                        <span>${formatTime(comment.created_at)}</span>
+                        <p>${escapeHtml(comment.body)}</p>
+                      </div>
+                    </div>
+                  `,
+                )
+                .join("")
+            : `<div class="muted-block">这个帖子还没有留言。</div>`
+        }
+      </div>
+    </section>
+
+    ${
+      state.user
+        ? `
+          <form id="comment-form" class="comment-form single-comment-form">
+            <textarea name="body" rows="3" maxlength="1000" placeholder="写下你的留言..." required></textarea>
+            <button class="primary-button" type="submit">发送留言</button>
+          </form>
+        `
+        : `<div class="login-nudge compact">登录后可以留言</div>`
+    }
+  `;
+}
+
+function bindShellEvents() {
+  const searchForm = document.querySelector("#search-form");
+  if (searchForm) {
+    searchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      state.query = document.querySelector("#search-input").value.trim();
+      await loadPosts();
+    });
+  }
+
+  document.querySelector("#refresh-button")?.addEventListener("click", loadPosts);
 
   document.querySelector("#app").addEventListener("click", async (event) => {
     const authButton = event.target.closest("[data-auth]");
+    const homeButton = event.target.closest("[data-home]");
     const topicButton = event.target.closest("[data-topic]");
     const postCard = event.target.closest("[data-post-id]");
     const logoutButton = event.target.closest("#logout-button");
@@ -351,6 +434,14 @@ function bindShellEvents() {
     const removeAttachment = event.target.closest(".remove-attachment");
     const imageButton = event.target.closest(".attachment-open");
     const profileButton = event.target.closest(".profile-button");
+
+    if (homeButton) {
+      state.activePost = null;
+      shell();
+      await loadTopics();
+      await loadPosts();
+      return;
+    }
 
     if (authButton) {
       openAuthDialog(authButton.dataset.auth);
@@ -528,18 +619,23 @@ async function loadPosts() {
   try {
     const payload = await api(`/api/posts?${params.toString()}`);
     state.posts = payload.posts;
-    renderTopics();
-    renderPosts();
+    if (document.querySelector("#topic-list")) renderTopics();
+    if (document.querySelector("#posts")) renderPosts();
   } catch (err) {
     showFatal(err.message);
   }
 }
 
-async function loadPost(id) {
+async function loadPost(id, options = {}) {
   try {
     const payload = await api(`/api/posts/${id}`);
     state.activePost = payload.post;
-    renderDetail();
+    if (options.render === false) return;
+    if (document.querySelector("#single-thread")) {
+      renderSinglePostContent();
+    } else {
+      renderDetail();
+    }
   } catch (err) {
     showToast(err.message);
   }
@@ -631,7 +727,11 @@ async function createComment(form) {
     });
     form.reset();
     await loadPost(state.activePost.id);
-    await loadPosts();
+    if (document.querySelector("#single-thread")) {
+      renderSinglePostContent();
+    } else {
+      await loadPosts();
+    }
     await refreshSession();
   } catch (err) {
     showToast(err.message);
@@ -661,7 +761,13 @@ function showToast(message) {
 }
 
 function showFatal(message) {
-  document.querySelector("#posts").innerHTML = `
+  const posts = document.querySelector("#posts");
+  if (!posts) {
+    showToast(message);
+    return;
+  }
+
+  posts.innerHTML = `
     <div class="empty-state warning">
       <strong>后端暂时不可用</strong>
       <span>${escapeHtml(message)}。如果刚刚改完代码，请先创建并初始化 Cloudflare D1 数据库。</span>
@@ -724,6 +830,12 @@ async function openProfileDialog() {
         renderPosts();
       });
     });
+    dialog.querySelectorAll("[data-profile-comment-post]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        dialog.close();
+        await openSinglePostPage(Number(button.dataset.profileCommentPost));
+      });
+    });
   } catch (err) {
     dialog.querySelector(".profile-card").innerHTML = `
       <button class="close-button" value="cancel" type="button">×</button>
@@ -780,11 +892,11 @@ function profileMarkup(payload) {
             ? comments
                 .map(
                   (comment) => `
-                    <div class="profile-comment">
+                    <button class="profile-comment profile-comment-link" type="button" data-profile-comment-post="${comment.post_id}">
                       <strong>${escapeHtml(comment.username)} 评论了《${escapeHtml(comment.post_title)}》</strong>
                       <p>${escapeHtml(comment.body)}</p>
                       <span>${formatTime(comment.created_at)}</span>
-                    </div>
+                    </button>
                   `,
                 )
                 .join("")

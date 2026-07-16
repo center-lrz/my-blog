@@ -61,6 +61,18 @@ a {
   gap: 3px;
 }
 
+.brand-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #17202a;
+  text-align: left;
+}
+
+.brand-button:hover {
+  transform: translateY(-1px);
+}
+
 .brand span {
   font-size: 22px;
   font-weight: 900;
@@ -229,6 +241,72 @@ button:focus-visible,
   gap: 18px;
   width: min(1440px, calc(100% - 36px));
   margin: 22px auto 60px;
+}
+
+.single-topbar {
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+}
+
+.single-page {
+  display: grid;
+  width: min(880px, calc(100% - 36px));
+  margin: 28px auto 72px;
+}
+
+.single-thread {
+  display: grid;
+  gap: 16px;
+}
+
+.single-thread-card,
+.single-comments,
+.single-comment-form {
+  border: 1px solid rgba(23, 32, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 34px rgba(23, 32, 42, 0.06);
+  animation: slideFadeIn 220ms ease both;
+}
+
+.single-thread-card {
+  display: grid;
+  gap: 16px;
+  padding: clamp(18px, 4vw, 34px);
+}
+
+.single-thread-card h1 {
+  font-size: clamp(30px, 5vw, 48px);
+  line-height: 1.12;
+}
+
+.single-thread-card > p {
+  margin: 0;
+  color: #344054;
+  font-size: 17px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+}
+
+.single-comments {
+  display: grid;
+  gap: 14px;
+  padding: clamp(16px, 3vw, 24px);
+}
+
+.single-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.single-section-title span {
+  color: #667085;
+  font-weight: 800;
+}
+
+.single-comment-form {
+  padding: clamp(16px, 3vw, 24px);
 }
 
 .topics-panel,
@@ -787,9 +865,19 @@ h1 {
 .profile-comment {
   display: grid;
   gap: 7px;
+  width: 100%;
+  border: 0;
   padding: 12px;
   border-radius: 8px;
   background: #f8faf9;
+  color: #17202a;
+  text-align: left;
+}
+
+.profile-comment-link:hover {
+  background: #eef7f4;
+  box-shadow: 0 12px 26px rgba(23, 32, 42, 0.08);
+  transform: translateY(-1px);
 }
 
 .profile-comment p {
@@ -930,6 +1018,7 @@ h1 {
 
 @media (max-width: 820px) {
   .topbar,
+  .single-topbar,
   .layout,
   .form-grid {
     grid-template-columns: 1fr;
