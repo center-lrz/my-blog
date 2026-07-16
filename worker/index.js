@@ -66,7 +66,7 @@ export default {
         return json({ error: err.message }, err.status);
       }
 
-      return json({ error: err.message || "服务器暂时不可用" }, 500);
+      return json({ error: "服务器暂时不可用" }, 500);
     }
   },
 };
@@ -338,7 +338,7 @@ async function hashPassword(password, salt) {
     {
       name: "PBKDF2",
       salt: encoder.encode(salt),
-      iterations: 120000,
+      iterations: 100000,
       hash: "SHA-256",
     },
     key,
