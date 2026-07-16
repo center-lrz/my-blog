@@ -66,7 +66,7 @@ export default {
         return json({ error: err.message }, err.status);
       }
 
-      return json({ error: "服务器暂时不可用" }, 500);
+      return json({ error: err.message || "服务器暂时不可用" }, 500);
     }
   },
 };
