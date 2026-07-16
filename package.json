@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "worker:dev": "npx wrangler dev",
+    "db:init:local": "npx wrangler d1 execute my-blog-forum-db --local --file=./schema.sql",
+    "db:init:remote": "npx wrangler d1 execute my-blog-forum-db --remote --file=./schema.sql"
   },
   "dependencies": {},
   "devDependencies": {
