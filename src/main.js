@@ -155,18 +155,25 @@ function renderAccount() {
   }
 
   slot.innerHTML = `
-    <button class="user-chip profile-button" type="button" aria-label="打开个人中心">
-      <span class="avatar-badge-wrap">
-        ${escapeHtml(state.user.username.slice(0, 1).toUpperCase())}
-        ${
-          Number(state.user.unread_comment_count || 0) > 0
-            ? `<em class="notification-badge">${Math.min(Number(state.user.unread_comment_count), 99)}</em>`
-            : ""
-        }
-      </span>
-      <strong>${escapeHtml(state.user.username)}</strong>
-    </button>
-    <button class="ghost-button" id="logout-button" type="button">退出</button>
+    <div class="account-menu-wrap">
+      <button class="user-chip profile-button" type="button" aria-label="打开账号菜单">
+        <span class="avatar-badge-wrap">
+          ${escapeHtml(state.user.username.slice(0, 1).toUpperCase())}
+          ${
+            Number(state.user.unread_comment_count || 0) > 0
+              ? `<em class="notification-badge">${Math.min(Number(state.user.unread_comment_count), 99)}</em>`
+              : ""
+          }
+        </span>
+        <strong>${escapeHtml(state.user.username)}</strong>
+      </button>
+      <div class="account-menu" role="menu">
+        <button type="button" data-account-action="profile">个人中心</button>
+        <button type="button" data-account-action="posts">我的帖子</button>
+        <button type="button" data-account-action="security">安全中心</button>
+        <button type="button" data-account-action="logout">退出登录</button>
+      </div>
+    </div>
   `;
 }
 
@@ -428,12 +435,21 @@ function bindShellEvents() {
     const imageButton = event.target.closest(".attachment-open");
     const profileButton = event.target.closest(".profile-button");
     const refreshButton = event.target.closest("#refresh-button");
+    const accountAction = event.target.closest("[data-account-action]");
 
     if (homeButton) {
       state.activePost = null;
       shell();
       await loadTopics();
       await loadPosts();
+      return;
+    }
+
+    if (accountAction) {
+      const action = accountAction.dataset.accountAction;
+      if (action === "profile" || action === "posts") await openProfileDialog();
+      if (action === "security") openSecurityDialog();
+      if (action === "logout") await logout();
       return;
     }
 
@@ -833,8 +849,7 @@ async function openProfileDialog() {
     dialog.querySelectorAll("[data-profile-post]").forEach((button) => {
       button.addEventListener("click", async () => {
         dialog.close();
-        await loadPost(Number(button.dataset.profilePost));
-        renderPosts();
+        await openSinglePostPage(Number(button.dataset.profilePost));
       });
     });
     dialog.querySelectorAll("[data-profile-comment-post]").forEach((button) => {
@@ -912,6 +927,74 @@ function profileMarkup(payload) {
       </div>
     </section>
   `;
+}
+
+function openSecurityDialog() {
+  if (!state.user) return;
+
+  const dialog = document.createElement("dialog");
+  dialog.className = "security-dialog";
+  dialog.innerHTML = `
+    <form class="security-card">
+      <button class="close-button" type="button">×</button>
+      <p class="eyebrow">Security</p>
+      <h2>安全中心</h2>
+      <div class="security-summary">
+        <strong>${escapeHtml(state.user.username)}</strong>
+        <span>修改密码后，请使用新密码登录。</span>
+      </div>
+      <label>
+        当前密码
+        <input name="current_password" type="password" autocomplete="current-password" required />
+      </label>
+      <label>
+        新密码
+        <input name="new_password" type="password" minlength="6" autocomplete="new-password" required />
+      </label>
+      <label>
+        确认新密码
+        <input name="confirm_password" type="password" minlength="6" autocomplete="new-password" required />
+      </label>
+      <button class="primary-button" type="submit">保存新密码</button>
+      <p class="form-error" id="security-error"></p>
+    </form>
+  `;
+
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector(".close-button").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+
+  dialog.querySelector(".security-card").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const error = dialog.querySelector("#security-error");
+    const currentPassword = form.current_password.value;
+    const newPassword = form.new_password.value;
+    const confirmPassword = form.confirm_password.value;
+
+    if (newPassword !== confirmPassword) {
+      error.textContent = "两次输入的新密码不一致";
+      return;
+    }
+
+    try {
+      await api("/api/security/password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+      dialog.close();
+      showToast("密码已修改");
+    } catch (err) {
+      error.textContent = err.message;
+    }
+  });
 }
 
 async function start() {

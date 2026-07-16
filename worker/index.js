@@ -44,6 +44,11 @@ export default {
         return await logout(request, env.DB);
       }
 
+      if (request.method === "POST" && url.pathname === "/api/security/password") {
+        const user = await requireUser(request, env.DB);
+        return await changePassword(request, env.DB, user);
+      }
+
       if (request.method === "GET" && url.pathname === "/api/topics") {
         return await listTopics(env.DB);
       }
@@ -141,6 +146,35 @@ async function logout(request, db) {
   if (token) {
     await db.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
   }
+  return json({ ok: true });
+}
+
+async function changePassword(request, db, user) {
+  const body = await readJson(request);
+  const currentPassword = String(body.current_password || "");
+  const nextPassword = String(body.new_password || "");
+
+  if (!currentPassword) throw httpError(400, "请输入当前密码");
+  if (nextPassword.length < 6) throw httpError(400, "新密码至少需要 6 位");
+  if (currentPassword === nextPassword) throw httpError(400, "新密码不能和当前密码相同");
+
+  const row = await db
+    .prepare("SELECT password_hash, password_salt FROM users WHERE id = ?")
+    .bind(user.id)
+    .first();
+
+  if (!row) throw httpError(404, "账号不存在");
+
+  const currentHash = await hashPassword(currentPassword, row.password_salt);
+  if (currentHash !== row.password_hash) throw httpError(401, "当前密码不正确");
+
+  const salt = randomToken(16);
+  const passwordHash = await hashPassword(nextPassword, salt);
+  await db
+    .prepare("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?")
+    .bind(passwordHash, salt, user.id)
+    .run();
+
   return json({ ok: true });
 }
 
