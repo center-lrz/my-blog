@@ -6,6 +6,7 @@ const state = {
   posts: [],
   activeTopic: "all",
   activePost: null,
+  activeAuthor: null,
   query: "",
   pendingAttachment: null,
 };
@@ -143,6 +144,48 @@ async function openSinglePostPage(postId) {
   renderSinglePostContent();
 }
 
+async function openAuthorPage(userId) {
+  const payload = await api(`/api/users/${userId}`);
+  state.activeAuthor = payload.user;
+  state.posts = payload.posts || [];
+  state.activePost = null;
+
+  app.innerHTML = `
+    <header class="topbar single-topbar">
+      <button class="brand brand-button" data-home type="button">
+        <span>李润社区</span>
+        <small>作者主页</small>
+      </button>
+      <button class="ghost-button" data-home type="button">返回社区首页</button>
+      <div class="account-slot" id="account-slot"></div>
+    </header>
+
+    <main class="author-page">
+      <section class="author-hero">
+        <div class="profile-avatar">${escapeHtml(payload.user.username.slice(0, 1).toUpperCase())}</div>
+        <div>
+          <p class="eyebrow">Author</p>
+          <h1>${escapeHtml(payload.user.username)}</h1>
+          <p>${escapeHtml(payload.user.bio || "这个作者还没有填写个性签名。")}</p>
+          <span>发布过 ${Number(payload.user.post_count || 0)} 个帖子 · 加入于 ${formatTime(payload.user.created_at)}</span>
+        </div>
+      </section>
+
+      <section class="author-posts">
+        <div class="single-section-title">
+          <h2>发表过的帖子</h2>
+          <span>${Number(payload.user.post_count || 0)} 篇</span>
+        </div>
+        <div class="posts" id="posts"></div>
+      </section>
+    </main>
+  `;
+
+  bindShellEvents();
+  renderAccount();
+  renderPosts();
+}
+
 function renderAccount() {
   const slot = document.querySelector("#account-slot");
 
@@ -169,7 +212,7 @@ function renderAccount() {
       </button>
       <div class="account-menu" role="menu">
         <button type="button" data-account-action="profile">个人中心</button>
-        <button type="button" data-account-action="posts">我的帖子</button>
+        <button type="button" data-account-action="homepage">我的主页</button>
         <button type="button" data-account-action="security">安全中心</button>
         <button type="button" data-account-action="logout">退出登录</button>
       </div>
@@ -285,7 +328,9 @@ function renderPosts() {
       (post) => `
         <article class="post-card ${state.activePost?.id === post.id ? "selected" : ""}" data-post-id="${post.id}">
           <div class="post-head">
-            <div class="avatar">${escapeHtml(post.username.slice(0, 1).toUpperCase())}</div>
+            <button class="avatar author-avatar" type="button" data-author-id="${post.user_id}" aria-label="查看 ${escapeHtml(post.username)} 的主页">
+              ${escapeHtml(post.username.slice(0, 1).toUpperCase())}
+            </button>
             <div>
               <strong>${escapeHtml(post.username)}</strong>
               <span>${escapeHtml(post.topic_name)} · ${formatTime(post.created_at)}</span>
@@ -326,7 +371,11 @@ function renderDetail() {
       <h2>${escapeHtml(state.activePost.title)}</h2>
       ${state.activePost.body ? `<p>${escapeHtml(state.activePost.body)}</p>` : ""}
       ${attachmentMarkup(state.activePost, "detail")}
-      <div class="thread-meta">由 ${escapeHtml(state.activePost.username)} 发布 · ${formatTime(state.activePost.created_at)}</div>
+      <div class="thread-meta">
+        由
+        <button class="author-inline" type="button" data-author-id="${state.activePost.user_id}">${escapeHtml(state.activePost.username)}</button>
+        发布 · ${formatTime(state.activePost.created_at)}
+      </div>
 
       <div class="comments">
         <h3>留言 ${comments.length}</h3>
@@ -377,7 +426,11 @@ function renderSinglePostContent() {
       <h1>${escapeHtml(state.activePost.title)}</h1>
       ${state.activePost.body ? `<p>${escapeHtml(state.activePost.body)}</p>` : ""}
       ${attachmentMarkup(state.activePost, "detail")}
-      <div class="thread-meta">由 ${escapeHtml(state.activePost.username)} 发布 · ${formatTime(state.activePost.created_at)}</div>
+      <div class="thread-meta">
+        由
+        <button class="author-inline" type="button" data-author-id="${state.activePost.user_id}">${escapeHtml(state.activePost.username)}</button>
+        发布 · ${formatTime(state.activePost.created_at)}
+      </div>
     </article>
 
     <section class="single-comments">
@@ -436,9 +489,11 @@ function bindShellEvents() {
     const profileButton = event.target.closest(".profile-button");
     const refreshButton = event.target.closest("#refresh-button");
     const accountAction = event.target.closest("[data-account-action]");
+    const authorButton = event.target.closest("[data-author-id]");
 
     if (homeButton) {
       state.activePost = null;
+      state.activeAuthor = null;
       shell();
       await loadTopics();
       await loadPosts();
@@ -447,9 +502,17 @@ function bindShellEvents() {
 
     if (accountAction) {
       const action = accountAction.dataset.accountAction;
-      if (action === "profile" || action === "posts") await openProfileDialog();
+      if (action === "profile") await openProfileDialog();
+      if (action === "homepage") await openAuthorPage(state.user.id);
       if (action === "security") openSecurityDialog();
       if (action === "logout") await logout();
+      return;
+    }
+
+    if (authorButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      await openAuthorPage(Number(authorButton.dataset.authorId));
       return;
     }
 
@@ -846,6 +909,10 @@ async function openProfileDialog() {
     renderAccount();
     dialog.querySelector(".profile-card").innerHTML = profileMarkup(payload);
     dialog.querySelector(".close-button").addEventListener("click", () => dialog.close());
+    dialog.querySelector("#profile-edit-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await saveProfile(event.currentTarget, dialog);
+    });
     dialog.querySelectorAll("[data-profile-post]").forEach((button) => {
       button.addEventListener("click", async () => {
         dialog.close();
@@ -883,6 +950,36 @@ function profileMarkup(payload) {
         <p class="eyebrow">Profile</p>
         <h2>${escapeHtml(user.username)}</h2>
         <span>已发布 ${Number(user.post_count || 0)} 个帖子 · 收到 ${Number(user.received_comment_count || 0)} 条留言</span>
+      </div>
+    </section>
+
+    <section class="profile-section profile-edit-section">
+      <div>
+        <h3>个性签名</h3>
+        <p>展示在你的作者主页里，其他用户点击你的头像后会看到。</p>
+      </div>
+      <form id="profile-edit-form" class="profile-edit-form">
+        <textarea name="bio" rows="3" maxlength="160" placeholder="写一句介绍自己、兴趣或近况的话...">${escapeHtml(user.bio || "")}</textarea>
+        <div class="form-actions">
+          <span>最多 160 字</span>
+          <button class="primary-button" type="submit">保存签名</button>
+        </div>
+        <p class="form-error" id="profile-error"></p>
+      </form>
+    </section>
+
+    <section class="profile-section profile-dashboard">
+      <div class="profile-stat">
+        <strong>${Number(user.post_count || 0)}</strong>
+        <span>发帖</span>
+      </div>
+      <div class="profile-stat">
+        <strong>${Number(user.received_comment_count || 0)}</strong>
+        <span>收到留言</span>
+      </div>
+      <div class="profile-stat">
+        <strong>${Number(user.unread_comment_count || 0)}</strong>
+        <span>未读提醒</span>
       </div>
     </section>
 
@@ -927,6 +1024,23 @@ function profileMarkup(payload) {
       </div>
     </section>
   `;
+}
+
+async function saveProfile(form, dialog) {
+  const error = dialog.querySelector("#profile-error");
+  const bio = form.bio.value.trim();
+
+  try {
+    const payload = await api("/api/profile", {
+      method: "POST",
+      body: JSON.stringify({ bio }),
+    });
+    state.user = { ...state.user, ...payload.user };
+    renderAccount();
+    showToast("个性签名已保存");
+  } catch (err) {
+    error.textContent = err.message;
+  }
 }
 
 function openSecurityDialog() {

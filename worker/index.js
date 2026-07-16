@@ -32,6 +32,11 @@ export default {
         return await getProfile(env.DB, user);
       }
 
+      if (request.method === "POST" && url.pathname === "/api/profile") {
+        const user = await requireUser(request, env.DB);
+        return await updateProfile(request, env.DB, user);
+      }
+
       if (request.method === "POST" && url.pathname === "/api/auth/register") {
         return await register(request, env.DB);
       }
@@ -55,6 +60,11 @@ export default {
 
       if (request.method === "GET" && url.pathname === "/api/posts") {
         return await listPosts(url, env.DB);
+      }
+
+      const userMatch = url.pathname.match(/^\/api\/users\/(\d+)$/);
+      if (userMatch && request.method === "GET") {
+        return await getPublicUserProfile(env.DB, Number(userMatch[1]));
       }
 
       if (request.method === "POST" && url.pathname === "/api/posts") {
@@ -222,6 +232,7 @@ async function listPosts(url, db) {
         posts.title,
         posts.body,
         posts.created_at,
+        users.id AS user_id,
         users.username,
         topics.name AS topic_name,
         topics.slug AS topic_slug,
@@ -270,6 +281,7 @@ async function getPost(db, postId) {
         posts.title,
         posts.body,
         posts.created_at,
+        users.id AS user_id,
         users.username,
         topics.name AS topic_name,
         topics.slug AS topic_slug,
@@ -319,6 +331,79 @@ async function getPost(db, postId) {
   return json({ post });
 }
 
+async function getPublicUserProfile(db, userId) {
+  const profile = await db
+    .prepare(
+      `SELECT
+        id,
+        username,
+        COALESCE(bio, '') AS bio,
+        created_at
+      FROM users
+      WHERE id = ?`,
+    )
+    .bind(userId)
+    .first();
+
+  if (!profile) throw httpError(404, "用户不存在");
+
+  const { results: posts } = await db
+    .prepare(
+      `SELECT
+        posts.id,
+        posts.title,
+        posts.body,
+        posts.created_at,
+        users.id AS user_id,
+        users.username,
+        topics.name AS topic_name,
+        topics.slug AS topic_slug,
+        (
+          SELECT data_url
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_data,
+        (
+          SELECT mime_type
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_type,
+        (
+          SELECT file_name
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_name,
+        COUNT(comments.id) AS comment_count
+      FROM posts
+      JOIN users ON users.id = posts.user_id
+      JOIN topics ON topics.id = posts.topic_id
+      LEFT JOIN comments ON comments.post_id = posts.id
+      WHERE posts.user_id = ?
+      GROUP BY posts.id
+      ORDER BY posts.created_at DESC
+      LIMIT 80`,
+    )
+    .bind(userId)
+    .all();
+
+  return json({
+    user: {
+      id: profile.id,
+      username: profile.username,
+      bio: profile.bio,
+      created_at: profile.created_at,
+      post_count: posts?.length || 0,
+    },
+    posts: posts || [],
+  });
+}
+
 async function getProfile(db, user) {
   const stats = await db
     .prepare(
@@ -340,6 +425,7 @@ async function getProfile(db, user) {
         posts.title,
         posts.body,
         posts.created_at,
+        users.id AS user_id,
         users.username,
         topics.name AS topic_name,
         topics.slug AS topic_slug,
@@ -401,12 +487,27 @@ async function getProfile(db, user) {
   return json({
     user: {
       ...user,
+      bio: await getUserBio(db, user.id),
       unread_comment_count: 0,
       post_count: Number(stats?.post_count || 0),
       received_comment_count: Number(stats?.received_comment_count || 0),
     },
     posts: posts || [],
     recent_comments: recentComments || [],
+  });
+}
+
+async function updateProfile(request, db, user) {
+  const body = await readJson(request);
+  const bio = cleanText(body.bio, 160);
+
+  await db.prepare("UPDATE users SET bio = ? WHERE id = ?").bind(bio, user.id).run();
+
+  return json({
+    user: {
+      ...user,
+      bio,
+    },
   });
 }
 
@@ -520,11 +621,21 @@ async function ensureAttachmentTable(db) {
 async function ensureUserProfileColumns(db) {
   const { results } = await db.prepare("PRAGMA table_info(users)").all();
   const hasLastSeen = (results || []).some((column) => column.name === "last_seen_notifications_at");
+  const hasBio = (results || []).some((column) => column.name === "bio");
 
   if (!hasLastSeen) {
     await db.prepare("ALTER TABLE users ADD COLUMN last_seen_notifications_at TEXT").run();
     await db.prepare("UPDATE users SET last_seen_notifications_at = created_at WHERE last_seen_notifications_at IS NULL").run();
   }
+
+  if (!hasBio) {
+    await db.prepare("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''").run();
+  }
+}
+
+async function getUserBio(db, userId) {
+  const row = await db.prepare("SELECT COALESCE(bio, '') AS bio FROM users WHERE id = ?").bind(userId).first();
+  return row?.bio || "";
 }
 
 async function getUnreadCommentCount(db, userId) {

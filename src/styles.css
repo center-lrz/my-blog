@@ -225,6 +225,25 @@ button:focus-visible,
   font-weight: 900;
 }
 
+.author-avatar {
+  border: 0;
+  flex: 0 0 auto;
+}
+
+.author-avatar:hover,
+.author-inline:hover {
+  color: #0f766e;
+  transform: translateY(-1px);
+}
+
+.author-inline {
+  border: 0;
+  background: transparent;
+  color: #0f766e;
+  font-weight: 900;
+  padding: 0 2px;
+}
+
 .avatar-badge-wrap {
   position: relative;
 }
@@ -318,6 +337,51 @@ button:focus-visible,
   display: grid;
   width: min(880px, calc(100% - 36px));
   margin: 28px auto 72px;
+}
+
+.author-page {
+  display: grid;
+  gap: 18px;
+  width: min(980px, calc(100% - 36px));
+  margin: 28px auto 72px;
+}
+
+.author-hero,
+.author-posts {
+  border: 1px solid rgba(23, 32, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 34px rgba(23, 32, 42, 0.06);
+  animation: slideFadeIn 220ms ease both;
+}
+
+.author-hero {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: clamp(18px, 4vw, 34px);
+}
+
+.author-hero h1 {
+  font-size: clamp(32px, 5vw, 52px);
+  line-height: 1.05;
+}
+
+.author-hero p:not(.eyebrow) {
+  margin: 10px 0;
+  color: #344054;
+  line-height: 1.75;
+}
+
+.author-hero span {
+  color: #667085;
+  font-size: 14px;
+}
+
+.author-posts {
+  display: grid;
+  gap: 14px;
+  padding: clamp(16px, 3vw, 24px);
 }
 
 .single-thread {
@@ -927,6 +991,47 @@ h1 {
   gap: 12px;
 }
 
+.profile-edit-section {
+  grid-template-columns: 0.8fr 1.2fr;
+  align-items: start;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f8faf9;
+}
+
+.profile-edit-section p {
+  margin: 6px 0 0;
+  color: #667085;
+  line-height: 1.65;
+}
+
+.profile-edit-form {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-dashboard {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.profile-stat {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid rgba(23, 32, 42, 0.08);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.profile-stat strong {
+  font-size: 28px;
+}
+
+.profile-stat span {
+  color: #667085;
+  font-size: 14px;
+}
+
 .profile-posts,
 .profile-comments {
   display: grid;
@@ -1121,6 +1226,17 @@ h1 {
 
   .topics-panel {
     position: static;
+  }
+
+  .author-hero,
+  .profile-edit-section,
+  .profile-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .author-hero {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
