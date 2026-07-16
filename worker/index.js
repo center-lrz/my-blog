@@ -16,6 +16,7 @@ export default {
 
       await cleanupExpiredSessions(env.DB);
       await ensureAttachmentTable(env.DB);
+      await ensureUserProfileColumns(env.DB);
 
       if (request.method === "GET" && url.pathname === "/api/health") {
         return json({ ok: true });
@@ -24,6 +25,11 @@ export default {
       if (request.method === "GET" && url.pathname === "/api/session") {
         const user = await requireUser(request, env.DB);
         return json({ user });
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/profile") {
+        const user = await requireUser(request, env.DB);
+        return await getProfile(env.DB, user);
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/register") {
@@ -87,13 +93,16 @@ async function register(request, db) {
   const salt = randomToken(16);
   const passwordHash = await hashPassword(password, salt);
   const result = await db
-    .prepare("INSERT INTO users (username, password_hash, password_salt) VALUES (?, ?, ?)")
+    .prepare(
+      "INSERT INTO users (username, password_hash, password_salt, last_seen_notifications_at) VALUES (?, ?, ?, datetime('now'))",
+    )
     .bind(username, passwordHash, salt)
     .run();
 
   const user = {
     id: Number(result.meta.last_row_id),
     username,
+    unread_comment_count: 0,
   };
   const token = await createSession(db, user.id);
 
@@ -120,6 +129,7 @@ async function login(request, db) {
   const user = {
     id: row.id,
     username: row.username,
+    unread_comment_count: await getUnreadCommentCount(db, row.id),
   };
   const token = await createSession(db, user.id);
 
@@ -275,6 +285,97 @@ async function getPost(db, postId) {
   return json({ post });
 }
 
+async function getProfile(db, user) {
+  const stats = await db
+    .prepare(
+      `SELECT
+        COUNT(DISTINCT posts.id) AS post_count,
+        COUNT(comments.id) AS received_comment_count
+      FROM users
+      LEFT JOIN posts ON posts.user_id = users.id
+      LEFT JOIN comments ON comments.post_id = posts.id AND comments.user_id != users.id
+      WHERE users.id = ?`,
+    )
+    .bind(user.id)
+    .first();
+
+  const { results: posts } = await db
+    .prepare(
+      `SELECT
+        posts.id,
+        posts.title,
+        posts.body,
+        posts.created_at,
+        users.username,
+        topics.name AS topic_name,
+        topics.slug AS topic_slug,
+        (
+          SELECT data_url
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_data,
+        (
+          SELECT mime_type
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_type,
+        (
+          SELECT file_name
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_name,
+        COUNT(comments.id) AS comment_count
+      FROM posts
+      JOIN users ON users.id = posts.user_id
+      JOIN topics ON topics.id = posts.topic_id
+      LEFT JOIN comments ON comments.post_id = posts.id
+      WHERE posts.user_id = ?
+      GROUP BY posts.id
+      ORDER BY posts.created_at DESC
+      LIMIT 50`,
+    )
+    .bind(user.id)
+    .all();
+
+  const { results: recentComments } = await db
+    .prepare(
+      `SELECT
+        comments.id,
+        comments.body,
+        comments.created_at,
+        commenter.username,
+        posts.id AS post_id,
+        posts.title AS post_title
+      FROM comments
+      JOIN posts ON posts.id = comments.post_id
+      JOIN users AS commenter ON commenter.id = comments.user_id
+      WHERE posts.user_id = ? AND comments.user_id != ?
+      ORDER BY comments.created_at DESC
+      LIMIT 20`,
+    )
+    .bind(user.id, user.id)
+    .all();
+
+  await db.prepare("UPDATE users SET last_seen_notifications_at = datetime('now') WHERE id = ?").bind(user.id).run();
+
+  return json({
+    user: {
+      ...user,
+      unread_comment_count: 0,
+      post_count: Number(stats?.post_count || 0),
+      received_comment_count: Number(stats?.received_comment_count || 0),
+    },
+    posts: posts || [],
+    recent_comments: recentComments || [],
+  });
+}
+
 async function createPost(request, db, user) {
   const body = await readJson(request);
   const title = cleanText(body.title, 80);
@@ -342,6 +443,7 @@ async function requireUser(request, db) {
   return {
     id: row.id,
     username: row.username,
+    unread_comment_count: await getUnreadCommentCount(db, row.id),
   };
 }
 
@@ -379,6 +481,33 @@ async function ensureAttachmentTable(db) {
   await db
     .prepare("CREATE INDEX IF NOT EXISTS idx_post_attachments_post_id ON post_attachments(post_id)")
     .run();
+}
+
+async function ensureUserProfileColumns(db) {
+  const { results } = await db.prepare("PRAGMA table_info(users)").all();
+  const hasLastSeen = (results || []).some((column) => column.name === "last_seen_notifications_at");
+
+  if (!hasLastSeen) {
+    await db.prepare("ALTER TABLE users ADD COLUMN last_seen_notifications_at TEXT").run();
+    await db.prepare("UPDATE users SET last_seen_notifications_at = created_at WHERE last_seen_notifications_at IS NULL").run();
+  }
+}
+
+async function getUnreadCommentCount(db, userId) {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(comments.id) AS unread_count
+      FROM users
+      JOIN posts ON posts.user_id = users.id
+      JOIN comments ON comments.post_id = posts.id
+      WHERE users.id = ?
+        AND comments.user_id != users.id
+        AND comments.created_at > COALESCE(users.last_seen_notifications_at, users.created_at)`,
+    )
+    .bind(userId)
+    .first();
+
+  return Number(row?.unread_count || 0);
 }
 
 async function readJson(request) {

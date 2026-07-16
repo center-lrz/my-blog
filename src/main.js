@@ -45,7 +45,9 @@ function attachmentMarkup(post, variant = "card") {
 
   return `
     <figure class="attachment ${variant}">
-      <img src="${escapeHtml(post.attachment_data)}" alt="${escapeHtml(post.attachment_name || "帖子图片")}" loading="lazy" />
+      <button class="attachment-open" type="button" aria-label="查看完整图片">
+        <img src="${escapeHtml(post.attachment_data)}" alt="${escapeHtml(post.attachment_name || "帖子图片")}" loading="lazy" />
+      </button>
       <figcaption>${escapeHtml(post.attachment_name || "图片附件")}</figcaption>
     </figure>
   `;
@@ -129,10 +131,17 @@ function renderAccount() {
   }
 
   slot.innerHTML = `
-    <div class="user-chip">
-      <span>${escapeHtml(state.user.username.slice(0, 1).toUpperCase())}</span>
+    <button class="user-chip profile-button" type="button" aria-label="打开个人中心">
+      <span class="avatar-badge-wrap">
+        ${escapeHtml(state.user.username.slice(0, 1).toUpperCase())}
+        ${
+          Number(state.user.unread_comment_count || 0) > 0
+            ? `<em class="notification-badge">${Math.min(Number(state.user.unread_comment_count), 99)}</em>`
+            : ""
+        }
+      </span>
       <strong>${escapeHtml(state.user.username)}</strong>
-    </div>
+    </button>
     <button class="ghost-button" id="logout-button" type="button">退出</button>
   `;
 }
@@ -340,9 +349,24 @@ function bindShellEvents() {
     const logoutButton = event.target.closest("#logout-button");
     const attachButton = event.target.closest(".attach-button");
     const removeAttachment = event.target.closest(".remove-attachment");
+    const imageButton = event.target.closest(".attachment-open");
+    const profileButton = event.target.closest(".profile-button");
 
     if (authButton) {
       openAuthDialog(authButton.dataset.auth);
+      return;
+    }
+
+    if (imageButton) {
+      const figure = imageButton.closest(".attachment");
+      const img = imageButton.querySelector("img");
+      const caption = figure?.querySelector("figcaption")?.textContent || "图片";
+      openImageViewer(img?.src, caption);
+      return;
+    }
+
+    if (profileButton) {
+      await openProfileDialog();
       return;
     }
 
@@ -477,6 +501,20 @@ async function loadSession() {
   }
 }
 
+async function refreshSession() {
+  if (!localStorage.getItem(tokenKey)) return;
+
+  try {
+    const payload = await api("/api/session");
+    state.user = payload.user;
+    renderAccount();
+  } catch {
+    localStorage.removeItem(tokenKey);
+    state.user = null;
+    renderAccount();
+  }
+}
+
 async function loadTopics() {
   const payload = await api("/api/topics");
   state.topics = payload.topics;
@@ -594,6 +632,7 @@ async function createComment(form) {
     form.reset();
     await loadPost(state.activePost.id);
     await loadPosts();
+    await refreshSession();
   } catch (err) {
     showToast(err.message);
   }
@@ -627,6 +666,132 @@ function showFatal(message) {
       <strong>后端暂时不可用</strong>
       <span>${escapeHtml(message)}。如果刚刚改完代码，请先创建并初始化 Cloudflare D1 数据库。</span>
     </div>
+  `;
+}
+
+function openImageViewer(src, caption = "图片") {
+  if (!src) return;
+
+  const dialog = document.createElement("dialog");
+  dialog.className = "image-dialog";
+  dialog.innerHTML = `
+    <div class="image-viewer">
+      <button class="close-button" value="cancel" type="button">×</button>
+      <img src="${escapeHtml(src)}" alt="${escapeHtml(caption)}" />
+      <p>${escapeHtml(caption)}</p>
+    </div>
+  `;
+
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector(".close-button").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+}
+
+async function openProfileDialog() {
+  if (!state.user) return;
+
+  const dialog = document.createElement("dialog");
+  dialog.className = "profile-dialog";
+  dialog.innerHTML = `
+    <div class="profile-card">
+      <button class="close-button" value="cancel" type="button">×</button>
+      <div class="profile-loading">正在打开个人中心...</div>
+    </div>
+  `;
+
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector(".close-button").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+
+  try {
+    const payload = await api("/api/profile");
+    state.user = payload.user;
+    renderAccount();
+    dialog.querySelector(".profile-card").innerHTML = profileMarkup(payload);
+    dialog.querySelector(".close-button").addEventListener("click", () => dialog.close());
+    dialog.querySelectorAll("[data-profile-post]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        dialog.close();
+        await loadPost(Number(button.dataset.profilePost));
+        renderPosts();
+      });
+    });
+  } catch (err) {
+    dialog.querySelector(".profile-card").innerHTML = `
+      <button class="close-button" value="cancel" type="button">×</button>
+      <div class="empty-state warning">
+        <strong>个人中心打开失败</strong>
+        <span>${escapeHtml(err.message)}</span>
+      </div>
+    `;
+    dialog.querySelector(".close-button").addEventListener("click", () => dialog.close());
+  }
+}
+
+function profileMarkup(payload) {
+  const user = payload.user;
+  const posts = payload.posts || [];
+  const comments = payload.recent_comments || [];
+
+  return `
+    <button class="close-button" value="cancel" type="button">×</button>
+    <section class="profile-hero">
+      <div class="profile-avatar">${escapeHtml(user.username.slice(0, 1).toUpperCase())}</div>
+      <div>
+        <p class="eyebrow">Profile</p>
+        <h2>${escapeHtml(user.username)}</h2>
+        <span>已发布 ${Number(user.post_count || 0)} 个帖子 · 收到 ${Number(user.received_comment_count || 0)} 条留言</span>
+      </div>
+    </section>
+
+    <section class="profile-section">
+      <h3>我发表过的帖子</h3>
+      <div class="profile-posts">
+        ${
+          posts.length
+            ? posts
+                .map(
+                  (post) => `
+                    <button class="profile-post" type="button" data-profile-post="${post.id}">
+                      <strong>${escapeHtml(post.title)}</strong>
+                      <span>${escapeHtml(post.topic_name)} · ${formatTime(post.created_at)} · ${Number(post.comment_count || 0)} 条留言</span>
+                    </button>
+                  `,
+                )
+                .join("")
+            : `<div class="muted-block">还没有发表过帖子。</div>`
+        }
+      </div>
+    </section>
+
+    <section class="profile-section">
+      <h3>最近收到的留言</h3>
+      <div class="profile-comments">
+        ${
+          comments.length
+            ? comments
+                .map(
+                  (comment) => `
+                    <div class="profile-comment">
+                      <strong>${escapeHtml(comment.username)} 评论了《${escapeHtml(comment.post_title)}》</strong>
+                      <p>${escapeHtml(comment.body)}</p>
+                      <span>${formatTime(comment.created_at)}</span>
+                    </div>
+                  `,
+                )
+                .join("")
+            : `<div class="muted-block">暂时还没有收到留言。</div>`
+        }
+      </div>
+    </section>
   `;
 }
 

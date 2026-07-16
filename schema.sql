@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
+  last_seen_notifications_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
