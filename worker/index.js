@@ -90,7 +90,7 @@ async function register(request, db) {
     .run();
 
   const user = {
-    id: result.meta.last_row_id,
+    id: Number(result.meta.last_row_id),
     username,
   };
   const token = await createSession(db, user.id);
@@ -249,7 +249,7 @@ async function createPost(request, db, user) {
     .bind(topicId, user.id, title, content)
     .run();
 
-  return json({ post: { id: result.meta.last_row_id } }, 201);
+  return json({ post: { id: Number(result.meta.last_row_id) } }, 201);
 }
 
 async function createComment(request, db, user, postId) {
@@ -266,7 +266,7 @@ async function createComment(request, db, user, postId) {
     .bind(postId, user.id, content)
     .run();
 
-  return json({ comment: { id: result.meta.last_row_id } }, 201);
+  return json({ comment: { id: Number(result.meta.last_row_id) } }, 201);
 }
 
 async function requireUser(request, db) {
