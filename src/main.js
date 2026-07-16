@@ -7,6 +7,7 @@ const state = {
   activeTopic: "all",
   activePost: null,
   query: "",
+  pendingAttachment: null,
 };
 
 const tokenKey = "forum_session_token";
@@ -37,6 +38,17 @@ function formatTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function attachmentMarkup(post, variant = "card") {
+  if (!post.attachment_data) return "";
+
+  return `
+    <figure class="attachment ${variant}">
+      <img src="${escapeHtml(post.attachment_data)}" alt="${escapeHtml(post.attachment_name || "帖子图片")}" loading="lazy" />
+      <figcaption>${escapeHtml(post.attachment_name || "图片附件")}</figcaption>
+    </figure>
+  `;
 }
 
 async function api(path, options = {}) {
@@ -185,12 +197,32 @@ function renderComposer() {
             .join("")}
         </select>
       </div>
-      <textarea name="body" rows="4" maxlength="2000" placeholder="分享一点新鲜事、问题或项目进展..." required></textarea>
+      <div class="composer-body">
+        <textarea name="body" rows="4" maxlength="2000" placeholder="分享一点新鲜事、问题或项目进展..."></textarea>
+        <button class="attach-button" type="button" aria-label="添加图片附件">+</button>
+        <input class="attachment-input" name="attachment" type="file" accept="image/*" hidden />
+      </div>
+      <div class="attachment-preview" id="attachment-preview">
+        ${state.pendingAttachment ? pendingAttachmentMarkup() : ""}
+      </div>
       <div class="form-actions">
-        <span>最多 2000 字</span>
+        <span>最多 2000 字，图片建议小于 700KB</span>
         <button class="primary-button" type="submit">发表帖子</button>
       </div>
     </form>
+  `;
+}
+
+function pendingAttachmentMarkup() {
+  return `
+    <div class="preview-card">
+      <img src="${escapeHtml(state.pendingAttachment.dataUrl)}" alt="${escapeHtml(state.pendingAttachment.name)}" />
+      <div>
+        <strong>${escapeHtml(state.pendingAttachment.name)}</strong>
+        <span>${Math.ceil(state.pendingAttachment.size / 1024)} KB</span>
+      </div>
+      <button class="remove-attachment" type="button" aria-label="移除图片">移除</button>
+    </div>
   `;
 }
 
@@ -219,7 +251,8 @@ function renderPosts() {
             </div>
           </div>
           <h2>${escapeHtml(post.title)}</h2>
-          <p>${escapeHtml(post.body)}</p>
+          ${post.body ? `<p>${escapeHtml(post.body)}</p>` : ""}
+          ${attachmentMarkup(post)}
           <div class="post-foot">
             <span>${Number(post.comment_count || 0)} 条留言</span>
             <button type="button">查看讨论</button>
@@ -249,7 +282,8 @@ function renderDetail() {
     <div class="sticky-card thread-card">
       <div class="thread-topic">${escapeHtml(state.activePost.topic_name)}</div>
       <h2>${escapeHtml(state.activePost.title)}</h2>
-      <p>${escapeHtml(state.activePost.body)}</p>
+      ${state.activePost.body ? `<p>${escapeHtml(state.activePost.body)}</p>` : ""}
+      ${attachmentMarkup(state.activePost, "detail")}
       <div class="thread-meta">由 ${escapeHtml(state.activePost.username)} 发布 · ${formatTime(state.activePost.created_at)}</div>
 
       <div class="comments">
@@ -304,9 +338,24 @@ function bindShellEvents() {
     const topicButton = event.target.closest("[data-topic]");
     const postCard = event.target.closest("[data-post-id]");
     const logoutButton = event.target.closest("#logout-button");
+    const attachButton = event.target.closest(".attach-button");
+    const removeAttachment = event.target.closest(".remove-attachment");
 
     if (authButton) {
       openAuthDialog(authButton.dataset.auth);
+      return;
+    }
+
+    if (attachButton) {
+      document.querySelector(".attachment-input")?.click();
+      return;
+    }
+
+    if (removeAttachment) {
+      state.pendingAttachment = null;
+      const input = document.querySelector(".attachment-input");
+      if (input) input.value = "";
+      renderAttachmentPreview();
       return;
     }
 
@@ -327,6 +376,12 @@ function bindShellEvents() {
 
     if (logoutButton) {
       await logout();
+    }
+  });
+
+  document.querySelector("#app").addEventListener("change", async (event) => {
+    if (event.target.matches(".attachment-input")) {
+      await handleAttachmentSelect(event.target);
     }
   });
 
@@ -458,6 +513,13 @@ async function createPost(form) {
     title: data.get("title").trim(),
     body: data.get("body").trim(),
     topic_id: Number(data.get("topic_id")),
+    attachment: state.pendingAttachment
+      ? {
+          name: state.pendingAttachment.name,
+          type: state.pendingAttachment.type,
+          dataUrl: state.pendingAttachment.dataUrl,
+        }
+      : null,
   };
 
   try {
@@ -466,11 +528,58 @@ async function createPost(form) {
       body: JSON.stringify(body),
     });
     form.reset();
+    state.pendingAttachment = null;
+    renderAttachmentPreview();
     await loadPosts();
     await loadPost(payload.post.id);
   } catch (err) {
     showToast(err.message);
   }
+}
+
+async function handleAttachmentSelect(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    showToast("目前只支持上传图片");
+    input.value = "";
+    return;
+  }
+
+  if (file.size > 700 * 1024) {
+    showToast("图片太大了，请选择 700KB 以内的图片");
+    input.value = "";
+    return;
+  }
+
+  try {
+    state.pendingAttachment = {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl: await readFileAsDataUrl(file),
+    };
+    renderAttachmentPreview();
+  } catch {
+    showToast("图片读取失败，请换一张试试");
+    input.value = "";
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result));
+    reader.addEventListener("error", reject);
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderAttachmentPreview() {
+  const preview = document.querySelector("#attachment-preview");
+  if (!preview) return;
+  preview.innerHTML = state.pendingAttachment ? pendingAttachmentMarkup() : "";
 }
 
 async function createComment(form) {

@@ -28,6 +28,12 @@ textarea {
 
 button {
   cursor: pointer;
+  transition:
+    transform 150ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease;
 }
 
 a {
@@ -102,6 +108,19 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
 }
 
+button:active,
+.post-card:active,
+.topic-item:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+button:focus-visible,
+.post-card:focus-visible,
+.topic-item:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.24);
+  outline-offset: 2px;
+}
+
 .primary-button,
 .ghost-button,
 .search button,
@@ -117,6 +136,7 @@ textarea:focus {
   border: 1px solid #0f766e;
   background: #0f766e;
   color: #fff;
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.18);
 }
 
 .ghost-button,
@@ -124,6 +144,21 @@ textarea:focus {
   border: 1px solid rgba(23, 32, 42, 0.14);
   background: #fff;
   color: #344054;
+}
+
+.primary-button:hover,
+.search button:hover {
+  background: #0b665f;
+  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.26);
+  transform: translateY(-1px);
+}
+
+.ghost-button:hover,
+.post-foot button:hover {
+  border-color: rgba(15, 118, 110, 0.35);
+  color: #0f766e;
+  box-shadow: 0 10px 22px rgba(23, 32, 42, 0.08);
+  transform: translateY(-1px);
 }
 
 .account-slot {
@@ -172,6 +207,11 @@ textarea:focus {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.86);
   box-shadow: 0 14px 34px rgba(23, 32, 42, 0.06);
+  transition:
+    transform 180ms ease,
+    box-shadow 220ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
 }
 
 .topics-panel,
@@ -226,12 +266,19 @@ textarea:focus {
   padding: 8px;
   color: #17202a;
   text-align: left;
+  transition:
+    transform 160ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .topic-item.active,
 .topic-item:hover {
   border-color: rgba(15, 118, 110, 0.18);
   background: #eef7f4;
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.08);
+  transform: translateX(3px);
 }
 
 .topic-dot {
@@ -288,6 +335,92 @@ textarea:focus {
   gap: 10px;
 }
 
+.composer-body {
+  position: relative;
+}
+
+.composer-body textarea {
+  min-height: 132px;
+  padding-right: 58px;
+}
+
+.attach-button {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 50%;
+  background: #0f766e;
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  box-shadow: 0 12px 26px rgba(15, 118, 110, 0.24);
+}
+
+.attach-button:hover {
+  background: #0b665f;
+  transform: translateY(-2px) rotate(90deg);
+  box-shadow: 0 16px 34px rgba(15, 118, 110, 0.3);
+}
+
+.attachment-preview {
+  min-height: 0;
+}
+
+.preview-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 8px;
+  background: #f2faf7;
+  animation: slideFadeIn 180ms ease both;
+}
+
+.preview-card img {
+  width: 64px;
+  height: 52px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.preview-card div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.preview-card strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-card span {
+  color: #667085;
+  font-size: 13px;
+}
+
+.remove-attachment {
+  min-height: 34px;
+  border: 1px solid rgba(180, 35, 24, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  color: #b42318;
+  font-weight: 800;
+}
+
+.remove-attachment:hover {
+  background: #fff1f0;
+  transform: translateY(-1px);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px;
@@ -337,11 +470,14 @@ h1 {
   display: grid;
   gap: 14px;
   padding: 18px;
+  animation: slideFadeIn 220ms ease both;
 }
 
 .post-card.selected,
 .post-card:hover {
   border-color: rgba(15, 118, 110, 0.34);
+  box-shadow: 0 18px 42px rgba(23, 32, 42, 0.11);
+  transform: translateY(-2px);
 }
 
 .post-head {
@@ -372,6 +508,40 @@ h1 {
   color: #344054;
   line-height: 1.72;
   white-space: pre-wrap;
+}
+
+.attachment {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.attachment img {
+  width: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #eef2f1;
+  transition:
+    transform 220ms ease,
+    filter 220ms ease;
+}
+
+.attachment.card img {
+  max-height: 280px;
+}
+
+.attachment.detail img {
+  max-height: 460px;
+}
+
+.attachment:hover img {
+  filter: saturate(1.05);
+  transform: scale(1.01);
+}
+
+.attachment figcaption {
+  color: #667085;
+  font-size: 13px;
 }
 
 .post-foot {
@@ -466,6 +636,7 @@ h1 {
   padding: 24px;
   border-radius: 8px;
   background: #fff;
+  animation: popIn 180ms ease both;
 }
 
 .auth-card label {
@@ -484,6 +655,12 @@ h1 {
   border: 1px solid rgba(23, 32, 42, 0.12);
   border-radius: 50%;
   background: #fff;
+}
+
+.close-button:hover {
+  border-color: rgba(180, 35, 24, 0.2);
+  color: #b42318;
+  transform: rotate(90deg);
 }
 
 .link-button {
@@ -510,6 +687,43 @@ h1 {
   background: #17202a;
   color: #fff;
   box-shadow: 0 18px 44px rgba(23, 32, 42, 0.22);
+  animation: toastIn 180ms ease both;
+}
+
+@keyframes slideFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 1180px) {
@@ -556,8 +770,13 @@ h1 {
   .panel-title,
   .feed-toolbar,
   .post-foot,
-  .form-actions {
+  .form-actions,
+  .preview-card {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .preview-card {
+    display: flex;
   }
 }

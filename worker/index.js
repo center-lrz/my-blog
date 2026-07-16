@@ -1,4 +1,5 @@
 const sessionDays = 30;
+const maxAttachmentDataLength = 950000;
 
 export default {
   async fetch(request, env) {
@@ -14,6 +15,7 @@ export default {
       }
 
       await cleanupExpiredSessions(env.DB);
+      await ensureAttachmentTable(env.DB);
 
       if (request.method === "GET" && url.pathname === "/api/health") {
         return json({ ok: true });
@@ -179,6 +181,27 @@ async function listPosts(url, db) {
         users.username,
         topics.name AS topic_name,
         topics.slug AS topic_slug,
+        (
+          SELECT data_url
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_data,
+        (
+          SELECT mime_type
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_type,
+        (
+          SELECT file_name
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_name,
         COUNT(comments.id) AS comment_count
       FROM posts
       JOIN users ON users.id = posts.user_id
@@ -205,7 +228,28 @@ async function getPost(db, postId) {
         posts.created_at,
         users.username,
         topics.name AS topic_name,
-        topics.slug AS topic_slug
+        topics.slug AS topic_slug,
+        (
+          SELECT data_url
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_data,
+        (
+          SELECT mime_type
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_type,
+        (
+          SELECT file_name
+          FROM post_attachments
+          WHERE post_attachments.post_id = posts.id
+          ORDER BY post_attachments.id ASC
+          LIMIT 1
+        ) AS attachment_name
       FROM posts
       JOIN users ON users.id = posts.user_id
       JOIN topics ON topics.id = posts.topic_id
@@ -236,9 +280,10 @@ async function createPost(request, db, user) {
   const title = cleanText(body.title, 80);
   const content = cleanText(body.body, 2000);
   const topicId = Number(body.topic_id);
+  const attachment = normalizeAttachment(body.attachment);
 
   if (!title) throw httpError(400, "帖子标题不能为空");
-  if (!content) throw httpError(400, "帖子内容不能为空");
+  if (!content && !attachment) throw httpError(400, "帖子内容或图片至少需要一个");
   if (!Number.isInteger(topicId)) throw httpError(400, "请选择话题大类");
 
   const topic = await db.prepare("SELECT id FROM topics WHERE id = ?").bind(topicId).first();
@@ -249,7 +294,16 @@ async function createPost(request, db, user) {
     .bind(topicId, user.id, title, content)
     .run();
 
-  return json({ post: { id: Number(result.meta.last_row_id) } }, 201);
+  const postId = Number(result.meta.last_row_id);
+
+  if (attachment) {
+    await db
+      .prepare("INSERT INTO post_attachments (post_id, file_name, mime_type, data_url) VALUES (?, ?, ?, ?)")
+      .bind(postId, attachment.name, attachment.type, attachment.dataUrl)
+      .run();
+  }
+
+  return json({ post: { id: postId } }, 201);
 }
 
 async function createComment(request, db, user, postId) {
@@ -307,6 +361,26 @@ async function cleanupExpiredSessions(db) {
   await db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run();
 }
 
+async function ensureAttachmentTable(db) {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS post_attachments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER NOT NULL,
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        data_url TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+      )`,
+    )
+    .run();
+
+  await db
+    .prepare("CREATE INDEX IF NOT EXISTS idx_post_attachments_post_id ON post_attachments(post_id)")
+    .run();
+}
+
 async function readJson(request) {
   try {
     return await request.json();
@@ -329,6 +403,20 @@ function normalizeUsername(value) {
 
 function cleanText(value, maxLength) {
   return String(value || "").trim().slice(0, maxLength);
+}
+
+function normalizeAttachment(value) {
+  if (!value) return null;
+
+  const name = cleanText(value.name, 120) || "image";
+  const type = cleanText(value.type, 80);
+  const dataUrl = String(value.dataUrl || "");
+
+  if (!type.startsWith("image/")) throw httpError(400, "目前只支持上传图片附件");
+  if (!dataUrl.startsWith(`data:${type};base64,`)) throw httpError(400, "图片附件格式不正确");
+  if (dataUrl.length > maxAttachmentDataLength) throw httpError(400, "图片太大，请选择 700KB 以内的图片");
+
+  return { name, type, dataUrl };
 }
 
 async function hashPassword(password, salt) {
