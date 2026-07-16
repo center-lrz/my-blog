@@ -14,10 +14,6 @@ export default {
         return json({ error: "Cloudflare D1 数据库还没有绑定到 DB" }, 500);
       }
 
-      await cleanupExpiredSessions(env.DB);
-      await ensureAttachmentTable(env.DB);
-      await ensureUserProfileColumns(env.DB);
-
       if (request.method === "GET" && url.pathname === "/api/health") {
         return json({ ok: true });
       }
@@ -236,20 +232,11 @@ async function listPosts(url, db) {
         users.username,
         topics.name AS topic_name,
         topics.slug AS topic_slug,
-        (
-          SELECT data_url
+        EXISTS (
+          SELECT 1
           FROM post_attachments
           WHERE post_attachments.post_id = posts.id
-          ORDER BY post_attachments.id ASC
-          LIMIT 1
-        ) AS attachment_data,
-        (
-          SELECT mime_type
-          FROM post_attachments
-          WHERE post_attachments.post_id = posts.id
-          ORDER BY post_attachments.id ASC
-          LIMIT 1
-        ) AS attachment_type,
+        ) AS has_attachment,
         (
           SELECT file_name
           FROM post_attachments

@@ -43,7 +43,18 @@ function formatTime(value) {
 }
 
 function attachmentMarkup(post, variant = "card") {
-  if (!post.attachment_data) return "";
+  if (!post.attachment_data && !post.has_attachment) return "";
+
+  if (!post.attachment_data && post.has_attachment) {
+    return `
+      <figure class="attachment ${variant} attachment-placeholder">
+        <div class="attachment-shell">
+          <strong>图片附件</strong>
+          <span>${escapeHtml(post.attachment_name || "点击帖子查看完整图片")}</span>
+        </div>
+      </figure>
+    `;
+  }
 
   return `
     <figure class="attachment ${variant}">

@@ -808,6 +808,23 @@ h1 {
   font-size: 13px;
 }
 
+.attachment-shell {
+  display: grid;
+  gap: 4px;
+  min-height: 96px;
+  place-content: center;
+  border: 1px dashed rgba(15, 118, 110, 0.28);
+  border-radius: 8px;
+  background: #f2faf7;
+  color: #0f766e;
+  text-align: center;
+}
+
+.attachment-shell span {
+  color: #667085;
+  font-size: 13px;
+}
+
 .post-foot {
   padding-top: 4px;
   border-top: 1px solid rgba(23, 32, 42, 0.08);
