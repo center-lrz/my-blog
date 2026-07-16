@@ -25,39 +25,39 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/register") {
-        return register(request, env.DB);
+        return await register(request, env.DB);
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/login") {
-        return login(request, env.DB);
+        return await login(request, env.DB);
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/logout") {
-        return logout(request, env.DB);
+        return await logout(request, env.DB);
       }
 
       if (request.method === "GET" && url.pathname === "/api/topics") {
-        return listTopics(env.DB);
+        return await listTopics(env.DB);
       }
 
       if (request.method === "GET" && url.pathname === "/api/posts") {
-        return listPosts(url, env.DB);
+        return await listPosts(url, env.DB);
       }
 
       if (request.method === "POST" && url.pathname === "/api/posts") {
         const user = await requireUser(request, env.DB);
-        return createPost(request, env.DB, user);
+        return await createPost(request, env.DB, user);
       }
 
       const postMatch = url.pathname.match(/^\/api\/posts\/(\d+)$/);
       if (postMatch && request.method === "GET") {
-        return getPost(env.DB, Number(postMatch[1]));
+        return await getPost(env.DB, Number(postMatch[1]));
       }
 
       const commentMatch = url.pathname.match(/^\/api\/posts\/(\d+)\/comments$/);
       if (commentMatch && request.method === "POST") {
         const user = await requireUser(request, env.DB);
-        return createComment(request, env.DB, user, Number(commentMatch[1]));
+        return await createComment(request, env.DB, user, Number(commentMatch[1]));
       }
 
       return json({ error: "接口不存在" }, 404);
